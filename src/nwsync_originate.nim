@@ -1,5 +1,6 @@
-import tables, strutils, os, osproc, docopt, streams, parsecfg, options
-import reimplLibs, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
+import tables, strutils, os, osproc, streams, parsecfg, options
+import docopt, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
+import reimplLibs
 
 let args = docopt"""
 Takes an nwsync .origin file and reconstructs the hak list accordingly.

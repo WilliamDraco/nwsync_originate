@@ -13,3 +13,4 @@ bin           = @["nwsync_originate"]
 requires "nim >= 1.4.2"
 requires "neverwinter >= 1.4.1"
 requires "tiny_sqlite >= 0.1.2"
+requires "docopt >= 0.6.8"
