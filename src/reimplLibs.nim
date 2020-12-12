@@ -131,3 +131,9 @@ proc pathForEntry*(manifest: Manifest, rootDirectory, sha1str: string, create: b
     result = result / pfx
     if create: createDir result
   result = result / sha1str
+
+
+##### https://github.com/nim-lang/Nim/issues/14810 #####
+proc toString*(bytes: openarray[byte]): string =
+  result = newString(bytes.len)
+  copyMem(result[0].addr, bytes[0].unsafeAddr, bytes.len)

@@ -1,6 +1,5 @@
-
 import tables, strutils, os, osproc, docopt, streams, parsecfg, options
-import reimplLibs, neverwinter/compressedbuf, neverwinter/resref
+import reimplLibs, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
 
 let args = docopt"""
 Takes an nwsync .origin file and reconstructs the hak list accordingly.
@@ -55,7 +54,7 @@ var #doc folders, with defaults for server/no-alias
   tlkDir = outdir
   nwsyncDir = outdir #unused without alias, but nonetheless..
 
-if toAlias:
+if fromClient or toAlias:
   if iniPath == "" or iniPath.extractFilename() != "nwn.ini":
     echo "-a NWN_INI must be provided in order to use alias."
     quit(0)
@@ -105,10 +104,50 @@ proc originateFromServer(originPath, outDir: string) =
     resStream.close()
     dataStream.close()
 
+proc originateFromClient(originPath, nwsyncDir, outDir: string) =
+  echo "Extracting files from the client NWSync repository. This may take some time."
+  let metadb = openDatabase(nwsyncDir / "nwsyncmeta.sqlite3")
+  #check they have the right manifest at all!
+  let originsha1 = originPath.splitFile().name
+  var hasOrigin: bool
+  for row in metadb.rows("SELECT sha1 FROM manifests"):
+    if originsha1 == row[0].fromDbValue(string):
+      hasOrigin = true
+      break
+
+  if not hasOrigin:
+    echo "The client NWSync repository does not have this origin. Terminating"
+    quit(0)
+
+  #map all sha1's to shards
+  let shardCount = fromDbValue(metadb.rows("SELECT MAX(id) FROM shards")[0][0], int)
+
+  var sha1Shard = initTable[string, int]()
+  for i in 0..(shardCount-1):
+    let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $i & ".sqlite3")
+    for row in shard.rows("SELECT sha1 FROM resrefs"):
+      sha1Shard[row[0].fromDbValue(string)] = i
+    shard.close()
+
+  #now to business matching sha1-resref-blob
+  for row in metadb.rows("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
+    let resSha1 = row[0].fromDbValue(string)
+    let dbresref = row[1].fromDbValue(string)
+    let dbrestype = row[2].fromDbValue(int).ResType
+    let resref = dbresref.changeFileExt(getResExt(dbrestype))
+
+    let hakFolder = outDir / resHakMap[resRef] & "_f" #just the hak name, not folder. might need to reduce this i.e. without .hak at the end.
+    discard existsOrCreateDir(hakFolder) #create the folder if its not there already.
+    let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
+
+    let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $sha1Shard[resSha1] & ".sqlite3")
+    let blob = fromDbValue(shard.rows("SELECT data FROM resrefs WHERE sha1 = ?", resSha1)[0][0], seq[byte]).toString()
+    resStream.write(blob.decompress(makeMagic("NSYC")))
+    resStream.close()
+    shard.close()
 
 if fromClient:
-  echo "-c Not yet implemented, sorry"
-  quit(0)
+  origin.originateFromClient(nwsyncDir, outdir)
 else:
   origin.originateFromServer(outdir)
 
