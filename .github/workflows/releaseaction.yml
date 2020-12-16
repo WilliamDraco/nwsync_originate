@@ -15,6 +15,20 @@ jobs:
         uses: actions/checkout@master
       - name: Install Nim
         uses: jiro4989/setup-nim-action@v1.1.4
+      - name: Get DLLs
+        run: |
+          curl --output dlls.zip https://nim-lang.org/download/dlls.zip
+          tar -xf dlls.zip
+      - name: Upload sqlite3 DLL
+        uses: actions/upload-artifact@v2
+        with:
+          name: winbin
+          path: sqlite3_64.dll
+      - name: Upload pcre DLL
+        uses: actions/upload-artifact@v2
+        with:
+          name: winbin
+          path: pcre64.dll
       - name: build win binary
         run: |
           nimble refresh
@@ -64,7 +78,7 @@ jobs:
         with:
           name: winbin
       - name: Zip Windows Asset
-        run: zip nwsync_originate-windows.zip nwsync_originate.exe
+        run: zip nwsync_originate-windows.zip nwsync_originate.exe sqlite3_64.dll pcre64.dll
       - name: Upload Windows Asset
         id: upload-windows-asset
         uses: actions/upload-release-asset@v1.0.2
