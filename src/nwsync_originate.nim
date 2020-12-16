@@ -139,7 +139,7 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
     let dbrestype = row[2].fromDbValue(int).ResType
-    let resref = dbresref.changeFileExt(getResExt(dbrestype))
+    let resref = dbresref & "." & getResExt(dbrestype)
 
     let hakFolder = outDir / resHakMap[resRef] & "_f" #just the hak name, not folder. might need to reduce this i.e. without .hak at the end.
     discard existsOrCreateDir(hakFolder) #create the folder if its not there already.
