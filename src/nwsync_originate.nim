@@ -121,16 +121,20 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     quit(0)
 
   #map all sha1's to shards
-  let shardCount = fromDbValue(metadb.rows("SELECT MAX(id) FROM shards")[0][0], int)
+  echo "Mapping nwsync shards"
+  var shardID = newseq[int]()
+  for row in metadb.rows("SELECT id FROM shards"):
+    shardID.add(row[0].fromDbValue(int) - 1)
 
   var sha1Shard = initTable[string, int]()
-  for i in 0..(shardCount-1):
+  for i in shardID:
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $i & ".sqlite3")
     for row in shard.rows("SELECT sha1 FROM resrefs"):
       sha1Shard[row[0].fromDbValue(string)] = i
     shard.close()
 
   #now to business matching sha1-resref-blob
+  echo "Decompressing files from Shards to outDir"
   for row in metadb.rows("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
