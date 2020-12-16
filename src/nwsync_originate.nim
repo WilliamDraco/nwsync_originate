@@ -49,11 +49,20 @@ let iniPath = if args["-a"]: $args["-a"] else: ""
 let fromClient = args["-c"]
 let outdir = $args["<outputDir>"]
 let toAlias = args["-d"]
+let nwnerfPath = findExe("nwn_erf")
+
+if nwnerfPath == "":
+  echo "Unable to find nwn_erf in PATH or running directory. Please ensure neverwinter.nim tools are available (See github readme)"
+  echo "You are able to continue to extract to folders in OutDir, but no Haks will be created - Do you wish to continue? Y/N"
+  let response = readline(stdin)
+  if response.toLowerAscii() != "y":
+    quit(0)
 
 var #doc folders, with defaults for server/no-alias
   hakDir = outdir
   tlkDir = outdir
   nwsyncDir = outdir #unused without alias, but nonetheless..
+
 
 if fromClient or toAlias:
   if iniPath == "" or iniPath.extractFilename() != "nwn.ini":
@@ -160,7 +169,7 @@ proc hakPacker() =
   #all entries now written out, we're going to straight-up call the hak-making-thingo on the folders
   for packhak in hakList:
     echo "Packing with: -f " & hakDir / packhak & " -c " & outDir / packhak & "_f"
-    let packer = startProcess(findExe("nwn_erf"), "", @["-f", hakDir / packhak, "-c", outDir / packhak & "_f"], nil, {poStdErrToStdOut, poUsePath})
+    let packer = startProcess(nwnerfPath, "", @["-f", hakDir / packhak, "-c", outDir / packhak & "_f"], nil, {poStdErrToStdOut, poUsePath})
 
     while packer.running:
       for line in packer.outputStream().lines:
@@ -177,4 +186,5 @@ proc hakPacker() =
       else:
         echo "File alias directory for " & file.extractFilename & " is not yet coded. Please raise a github issue for this."
 
-hakPacker()
+if nwnerfPath != "":
+  hakPacker()

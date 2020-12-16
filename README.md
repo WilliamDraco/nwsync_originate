@@ -7,6 +7,9 @@ Can re-originate from the origin server nwsync repo, or from client nwsync repos
 
 Note due to pre-release status of nwsync v3 which includes origins there may be changes, and indeed origins might be removed entirely - But for now, there's this.
 
+**REQUIRES**
+nwsync_originate utilises nwn_erf from the neverwinter.nim tools (https://github.com/niv/neverwinter.nim/releases) in order to pack the hak contents. Ensure nwn_erf is available in PATH or placed in the same directory as nwsync_originate.
+
 ```
 Usage:
   nwsync_originate <origin> <outputDir> [options]
