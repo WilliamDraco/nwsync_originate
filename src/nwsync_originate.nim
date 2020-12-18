@@ -5,6 +5,7 @@ import reimplLibs
 let args = docopt"""
 Takes an nwsync .origin file and reconstructs the hak list accordingly.
 Creates folders of hak contents, and then haks of those folders.
+Note that all contents of outputDir not in the .origin will be removed.
 
 Can create from server nwsync repo or from clients who have previously
 downloaded the manifest.
@@ -28,12 +29,12 @@ Options:
 """
 #Adapted from nwsync --version handling
 if args["--version"]:
-  const nimble: string   = slurp(currentSourcePath().splitFile().dir & "/../nwsync_originate.nimble")
+  const nimble: string    = slurp(currentSourcePath().splitFile().dir & "/../nwsync_originate.nimble")
   const gitBranch: string = staticExec("git symbolic-ref -q --short HEAD").strip
   const gitRev: string    = staticExec("git rev-parse HEAD").strip
 
-  let nimbleConfig        = loadConfig(newStringStream(nimble))
-  let packageVersion     = nimbleConfig.getSectionValue("", "version")
+  let nimbleConfig   = loadConfig(newStringStream(nimble))
+  let packageVersion = nimbleConfig.getSectionValue("", "version")
   let versionString  = "NWNT " & packageVersion & " (" & gitBranch & "/" & gitRev[0..5] & ", nim " & NimVersion & ")"
 
   echo versionString
@@ -63,7 +64,6 @@ var #doc folders, with defaults for server/no-alias
   tlkDir = outdir
   nwsyncDir = outdir #unused without alias, but nonetheless..
 
-
 if fromClient or toAlias:
   if iniPath == "" or iniPath.extractFilename() != "nwn.ini":
     echo "-a NWN_INI must be provided in order to use alias."
@@ -88,12 +88,40 @@ proc readOrigins(path: string) =
       hakList.add(hakname)
     elif line.startsWith("\t"): #an entry
       resHakMap[line[1..^1].toLowerAscii()] = lastHak
-      if line.len > 12 and line[1..11] == "__erfdup__":
+      if line.len > 12 and line[1..10] == "__erfdup__":
         echo "Original name cannot be recoved for duplicate: " & line[1..^1].toLowerAscii() & ". Recommend de-duplicate in original repo"
     else: #tlk, maybe something else?
       lastHak = "ResFiles"
 
 origin.readOrigins()
+
+#Now we know contents, delete unused hak folders and res files
+echo "Clean-up of unused Directories and Files"
+proc clearDirectories(outdir: string) =
+  var marked = newSeq[string]()
+
+  for dir in outdir.walkDirRec({pcDir}, {}):
+    let folder = dir.lastPathPart()[0..^3]
+    if not hakList.contains(folder) and folder != "ResFiles":
+      marked.add(dir)
+
+  for dir in marked:
+    dir.removeDir()
+
+outdir.clearDirectories()
+
+proc cleanFiles(outdir: string) =
+  var marked = newSeq[string]()
+
+  for file in outdir.walkDirRec({pcFile}, {pcDir}):
+    let name = file.extractFilename()
+    if not resHakMap.hasKey(name):
+      marked.add(file)
+
+  for file in marked:
+    file.removeFile()
+
+outdir.cleanFiles()
 
 #extract files when starting from a server repo
 proc originateFromServer(originPath, outDir: string) =
@@ -103,14 +131,14 @@ proc originateFromServer(originPath, outDir: string) =
   #Read through manifests, finding resrefs and allocating them to folders
   for mfCount, mfEntry in manifest.entries:
     #first, get the hak set-up
-    let resRef = $mfEntry.resRef.resolve().get() #ie abc.mdl //from neverwinter/resref
-    let hakFolder = outDir / resHakMap[resRef] & "_f" #just the hak name, not folder. might need to reduce this i.e. without .hak at the end.
-    discard existsOrCreateDir(hakFolder) #create the folder if its not there already.
-    let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
-    #now find the relevent file based on mfEntry.sha1 (See pathForEntry function in nwsync/libupdate)
+    let resRef = $mfEntry.resRef.resolve().get() #ie abc.mdl
+    let hakFolder = outDir / resHakMap[resRef] & "_f"
+    discard existsOrCreateDir(hakFolder)
+    let resStream = openFileStream(hakFolder / resRef, fmWrite)
+    #now find the relevent file based on mfEntry.sha1
     let repoPath = manifest.pathForEntry(originPath.parentDir().parentDir(), mfEntry.sha1, false)
     let dataStream = repoPath.openFileStream(fmRead)
-    resStream.write(dataStream.decompress(makeMagic("NSYC"))) #decompress from  nwn/compressedbuf
+    resStream.write(dataStream.decompress(makeMagic("NSYC")))
     resStream.close()
     dataStream.close()
 

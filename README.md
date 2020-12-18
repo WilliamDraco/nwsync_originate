@@ -1,9 +1,9 @@
 # nwsync_originate
 A third-party tool for utilising the origin files of nwsync (post v3) to recreate Haks from server or client repositories.
 
-Takes an nwsync .origin file and reconstructs the hak list accordingly, creating folders with all of the hak contents, and then also haks of those folders.
+Takes an nwsync .origin file and reconstructs the hak list accordingly, creating folders with all of the hak contents, and then also haks of those folders. It can re-originate from the origin server nwsync repo, or from client nwsync repositiories so long as they have previously downloaded the correct manifest. The outputDir will be cleared of all folders/files which are not part of the currently processing origin.
 
-Can re-originate from the origin server nwsync repo, or from client nwsync repositiories so long as they have previously downloaded the correct manifest.
+Please be aware that re-origination does not result in exact replicas of the original haks. Origin files do not include any file not used by resman, which will exclude shadowed resources. In some cases, this can result in entire hak files being removed - However, be aware that this is intelligent deduplication, and never results in "lost" files which were in use. (Warnings regarding \_\_erfdup\_\_ files are in relation to duplicates within a single erf/hak)
 
 Note due to pre-release status of nwsync v3 which includes origins there may be changes, and indeed origins might be removed entirely - But for now, there's this.
 
