@@ -70,11 +70,11 @@ if fromClient or toAlias:
     quit(0)
   let ini = iniPath.openFileStream(fmRead)
   for line in ini.lines():
-    if line[0..2] == "HAK":
+    if line[0..2] == "HAK" and toAlias:
       hakDir = line[4..^1]
-    elif line[0..2] == "TLK":
+    elif line[0..2] == "TLK" and toAlias:
       tlkDir = line[4..^1]
-    elif line[0..5] == "NWSYNC":
+    elif line[0..5] == "NWSYNC" and fromClient:
       nwsyncDir = line[7..^1]
   ini.close()
 
@@ -213,7 +213,6 @@ proc hakPacker() =
 
     if packer.waitForExit != 0:
       echo "Packing of " & packhak & " failed."
-
 
   if toAlias:
     for kind, file in walkdir(outDir / "ResFiles_f"):
