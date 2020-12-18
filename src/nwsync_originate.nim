@@ -1,4 +1,4 @@
-import tables, strutils, os, osproc, streams, parsecfg, options
+import tables, strutils, os, osproc, streams, parsecfg, options, std/sha1
 import docopt, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
 import reimplLibs
 
@@ -76,6 +76,7 @@ if fromClient or toAlias:
       tlkDir = line[4..^1]
     elif line[0..5] == "NWSYNC":
       nwsyncDir = line[7..^1]
+  ini.close()
 
 proc readOrigins(path: string) =
   echo "reading origin file"
@@ -134,8 +135,12 @@ proc originateFromServer(originPath, outDir: string) =
     let resRef = $mfEntry.resRef.resolve().get() #ie abc.mdl
     let hakFolder = outDir / resHakMap[resRef] & "_f"
     discard existsOrCreateDir(hakFolder)
-    let resStream = openFileStream(hakFolder / resRef, fmWrite)
+    if fileExists(hakFolder / resRef):
+      if mfEntry.sha1 == ($secureHashFile(hakFolder / resRef)).toLowerAscii():
+        continue
+
     #now find the relevent file based on mfEntry.sha1
+    let resStream = openFileStream(hakFolder / resRef, fmWrite)
     let repoPath = manifest.pathForEntry(originPath.parentDir().parentDir(), mfEntry.sha1, false)
     let dataStream = repoPath.openFileStream(fmRead)
     resStream.write(dataStream.decompress(makeMagic("NSYC")))
@@ -143,7 +148,7 @@ proc originateFromServer(originPath, outDir: string) =
     dataStream.close()
 
 proc originateFromClient(originPath, nwsyncDir, outDir: string) =
-  echo "Extracting files from the client NWSync repository. This may take some time."
+  echo "Extracting files from the client NWSync repository"
   let metadb = openDatabase(nwsyncDir / "nwsyncmeta.sqlite3")
   #check they have the right manifest at all!
   let originsha1 = originPath.splitFile().name
@@ -171,7 +176,7 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     shard.close()
 
   #now to business matching sha1-resref-blob
-  echo "Decompressing files from Shards to outDir"
+  echo "Decompressing new files from Shards to outDir - This can take a while"
   for row in metadb.rows("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
@@ -180,10 +185,13 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
 
     let hakFolder = outDir / resHakMap[resRef] & "_f" #just the hak name, not folder. might need to reduce this i.e. without .hak at the end.
     discard existsOrCreateDir(hakFolder) #create the folder if its not there already.
-    let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
+    if fileExists(hakFolder / resRef):
+      if resSha1 == ($secureHashFile(hakFolder / resRef)).toLowerAscii():
+        continue
 
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $sha1Shard[resSha1] & ".sqlite3")
     let blob = fromDbValue(shard.rows("SELECT data FROM resrefs WHERE sha1 = ?", resSha1)[0][0], seq[byte]).toString()
+    let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
     resStream.write(blob.decompress(makeMagic("NSYC")))
     resStream.close()
     shard.close()

@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.1"
+version       = "0.3.0"
 author        = "WilliamDraco"
 description   = "Takes a nwsync .origin file and re-originates the haks/tlks which went into it."
 license       = "MIT"
