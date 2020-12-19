@@ -1,4 +1,4 @@
-import tables, strutils, os, osproc, streams, parsecfg, options, std/sha1
+import tables, strutils, os, osproc, streams, parsecfg, options, json, times
 import docopt, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
 import reimplLibs
 
@@ -116,13 +116,35 @@ proc cleanFiles(outdir: string) =
 
   for file in outdir.walkDirRec({pcFile}, {pcDir}):
     let name = file.extractFilename()
-    if not resHakMap.hasKey(name):
+    if not resHakMap.hasKey(name) and name != "hashfile.json":
       marked.add(file)
 
   for file in marked:
     file.removeFile()
 
 outdir.cleanFiles()
+
+#load existing json hashfile
+var
+  jHash = newJObject()
+  jsonEx: bool
+  jTime: Time
+  fileTime = getTime()
+if fileExists(outdir / "hashfile.json"):
+  echo "Found existing hashfile"
+  jHash = parseFile(outdir / "hashfile.json")
+  jsonEx = true
+  let getTime = jHash["WriteTime"].getStr()
+  jTime = parseTime(getTime, "yyyy-MM-dd'T'HH:mm:sszzz", local())
+
+#returns True if we don't need to redo this file.
+proc checkRewrite(folder, resref, sha1: string): bool =
+  if jsonEx and fileExists(folder / resRef):
+    if ((folder / resRef).getLastModificationTime() - jTime).abs() < initDuration(seconds = 1):
+      let hash = jHash.getOrDefault(resRef).getStr()
+      if sha1 == hash:
+        (folder / resRef).setLastModificationTime(fileTime)
+        result = true
 
 #extract files when starting from a server repo
 proc originateFromServer(originPath, outDir: string) =
@@ -135,9 +157,8 @@ proc originateFromServer(originPath, outDir: string) =
     let resRef = $mfEntry.resRef.resolve().get() #ie abc.mdl
     let hakFolder = outDir / resHakMap[resRef] & "_f"
     discard existsOrCreateDir(hakFolder)
-    if fileExists(hakFolder / resRef):
-      if mfEntry.sha1 == ($secureHashFile(hakFolder / resRef)).toLowerAscii():
-        continue
+    if checkRewrite(hakFolder, resref, mfEntry.sha1):
+      continue
 
     #now find the relevent file based on mfEntry.sha1
     let resStream = openFileStream(hakFolder / resRef, fmWrite)
@@ -145,7 +166,9 @@ proc originateFromServer(originPath, outDir: string) =
     let dataStream = repoPath.openFileStream(fmRead)
     resStream.write(dataStream.decompress(makeMagic("NSYC")))
     resStream.close()
+    (hakFolder / resRef).setLastModificationTime(fileTime)
     dataStream.close()
+    jHash[resRef] = %mfentry.sha1
 
 proc originateFromClient(originPath, nwsyncDir, outDir: string) =
   echo "Extracting files from the client NWSync repository"
@@ -181,25 +204,33 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
     let dbrestype = row[2].fromDbValue(int).ResType
-    let resref = dbresref & "." & getResExt(dbrestype)
+    let resRef = dbresref & "." & getResExt(dbrestype)
 
     let hakFolder = outDir / resHakMap[resRef] & "_f" #just the hak name, not folder. might need to reduce this i.e. without .hak at the end.
     discard existsOrCreateDir(hakFolder) #create the folder if its not there already.
-    if fileExists(hakFolder / resRef):
-      if resSha1 == ($secureHashFile(hakFolder / resRef)).toLowerAscii():
-        continue
-
+    if checkRewrite(hakFolder, resRef, resSha1):
+      continue
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $sha1Shard[resSha1] & ".sqlite3")
     let blob = fromDbValue(shard.rows("SELECT data FROM resrefs WHERE sha1 = ?", resSha1)[0][0], seq[byte]).toString()
     let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
     resStream.write(blob.decompress(makeMagic("NSYC")))
     resStream.close()
+    (hakFolder / resRef).setLastModificationTime(fileTime)
     shard.close()
+    jHash[resRef] = %resSha1
 
 if fromClient:
   origin.originateFromClient(nwsyncDir, outdir)
 else:
   origin.originateFromServer(outdir)
+
+#write out Json file
+echo "Writing hashfile Json"
+jHash["WriteTime"] = %($filetime)
+let jsonFile = openFileStream(outdir / "hashfile.json", fmWrite)
+jsonFile.write($jHash)
+jsonFile.close()
+
 
 proc hakPacker() =
   #all entries now written out, we're going to straight-up call the hak-making-thingo on the folders
