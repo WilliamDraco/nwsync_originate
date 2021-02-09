@@ -146,12 +146,24 @@ proc checkRewrite(folder, resref, sha1: string): bool =
         (folder / resRef).setLastModificationTime(fileTime)
         result = true
 
+proc writeDecompressed(o: Stream, i: Stream|string): int =
+  var data = ""
+  try:
+    data = i.decompress(makeMagic("NSYC"))
+  except ValueError:
+    if getCurrentExceptionMsg() == "payload size is zero":
+      result = 1 #arbitrary return code for no payload.
+    else: raise
+  except: raise
+  o.write(data)
+
 #extract files when starting from a server repo
 proc originateFromServer(originPath, outDir: string) =
   echo "Extracting files from the server NWSync repository. This may take some time."
   let manifest = readManifest(originPath.changeFileExt(""))
 
   #Read through manifests, finding resrefs and allocating them to folders
+  var zeroSized: int
   for mfCount, mfEntry in manifest.entries:
     #first, get the hak set-up
     let resRef = $mfEntry.resRef.resolve().get() #ie abc.mdl
@@ -164,11 +176,14 @@ proc originateFromServer(originPath, outDir: string) =
     let resStream = openFileStream(hakFolder / resRef, fmWrite)
     let repoPath = manifest.pathForEntry(originPath.parentDir().parentDir(), mfEntry.sha1, false)
     let dataStream = repoPath.openFileStream(fmRead)
-    resStream.write(dataStream.decompress(makeMagic("NSYC")))
+    zeroSized += resStream.writeDecompressed(dataStream)
     resStream.close()
     (hakFolder / resRef).setLastModificationTime(fileTime)
     dataStream.close()
     jHash[resRef] = %mfentry.sha1
+
+  if zeroSized > 0:
+    echo $zeroSized & " zero-sized resources were written. Review whether this is intentional."
 
 proc originateFromClient(originPath, nwsyncDir, outDir: string) =
   echo "Extracting files from the client NWSync repository"
@@ -200,6 +215,7 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
 
   #now to business matching sha1-resref-blob
   echo "Decompressing new files from Shards to outDir - This can take a while"
+  var zeroSized: int
   for row in metadb.rows("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
@@ -213,11 +229,15 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $sha1Shard[resSha1] & ".sqlite3")
     let blob = fromDbValue(shard.rows("SELECT data FROM resrefs WHERE sha1 = ?", resSha1)[0][0], seq[byte]).toString()
     let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
-    resStream.write(blob.decompress(makeMagic("NSYC")))
+
+    zeroSized += resStream.writeDecompressed(blob)
     resStream.close()
     (hakFolder / resRef).setLastModificationTime(fileTime)
     shard.close()
     jHash[resRef] = %resSha1
+
+  if zeroSized > 0:
+    echo $zeroSized & " zero-sized resources were written. Review whether this is intentional."
 
 if fromClient:
   origin.originateFromClient(nwsyncDir, outdir)
