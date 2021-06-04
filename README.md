@@ -15,6 +15,7 @@ powershell wget http://nwsync.ip.address.here/latest -OutFile latest.txt
 set /p neworigin=< latest.txt
 powershell wget http://nwsync.ip.address.here/manifests/%neworigin%.origin -OutFile %neworigin%.origin
 nwsync_originate %neworigin%.origin C:\file\output\path -a "C:\Users\username\Documents\Neverwinter Nights\nwn.ini" -d -c
+powershell Remove-Item %neworigin%.origin
 ```
 
 ```
