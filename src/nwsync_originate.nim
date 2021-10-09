@@ -35,7 +35,7 @@ if args["--version"]:
 
   let nimbleConfig   = loadConfig(newStringStream(nimble))
   let packageVersion = nimbleConfig.getSectionValue("", "version")
-  let versionString  = "NWNT " & packageVersion & " (" & gitBranch & "/" & gitRev[0..5] & ", nim " & NimVersion & ")"
+  let versionString  = "nwsync_originate " & packageVersion & " (" & gitBranch & "/" & gitRev[0..5] & ", nim " & NimVersion & ")"
 
   echo versionString
   quit(0)
