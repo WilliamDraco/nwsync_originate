@@ -1,6 +1,15 @@
-import tables, strutils, os, osproc, streams, parsecfg, options, json, times
+import tables, strutils, os, osproc, streams, parsecfg, options, json, times, macros
 import docopt, neverwinter/compressedbuf, neverwinter/resref, neverwinter/restype, tiny_sqlite
-import reimplLibs
+import neverwinter/nwsync
+
+# Reimplimented from neverwinter/nwsync/private/libupdate.nim as 'private' confuses everything, but is required:
+proc pathForEntry*(manifest: Manifest, rootDirectory, sha1str: string, create: bool): string =
+  result = rootDirectory / "data" / "sha1"
+  for i in 0..<manifest.hashTreeDepth:
+    let pfx = sha1str[i*2..<(i*2+2)]
+    result = result / pfx
+    if create: createDir result
+  result = result / sha1str
 
 let args = docopt"""
 Takes an nwsync .origin file and reconstructs the hak list accordingly.
@@ -29,7 +38,7 @@ Options:
 """
 #Adapted from nwsync --version handling
 if args["--version"]:
-  const nimble: string    = slurp(currentSourcePath().splitFile().dir & "/../nwsync_originate.nimble")
+  const nimble: string    = slurp((currentSourcePath().splitFile().dir / ".." / "nwsync_originate.nimble").normalizedPath())
   const gitBranch: string = staticExec("git symbolic-ref -q --short HEAD").strip
   const gitRev: string    = staticExec("git rev-parse HEAD").strip
 
@@ -191,7 +200,7 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
   #check they have the right manifest at all!
   let originsha1 = originPath.splitFile().name
   var hasOrigin: bool
-  for row in metadb.rows("SELECT sha1 FROM manifests"):
+  for row in metadb.iterate("SELECT sha1 FROM manifests"):
     if originsha1 == row[0].fromDbValue(string):
       hasOrigin = true
       break
@@ -203,20 +212,20 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
   #map all sha1's to shards
   echo "Mapping nwsync shards"
   var shardID = newseq[int]()
-  for row in metadb.rows("SELECT id FROM shards"):
+  for row in metadb.iterate("SELECT id FROM shards"):
     shardID.add(row[0].fromDbValue(int) - 1)
 
   var sha1Shard = initTable[string, int]()
   for i in shardID:
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $i & ".sqlite3")
-    for row in shard.rows("SELECT sha1 FROM resrefs"):
+    for row in shard.iterate("SELECT sha1 FROM resrefs"):
       sha1Shard[row[0].fromDbValue(string)] = i
     shard.close()
 
   #now to business matching sha1-resref-blob
   echo "Decompressing new files from Shards to outDir - This can take a while"
   var zeroSized: int
-  for row in metadb.rows("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
+  for row in metadb.iterate("SELECT resref_sha1, resref, restype FROM manifest_resrefs WHERE manifest_sha1 = ?", originsha1):
     let resSha1 = row[0].fromDbValue(string)
     let dbresref = row[1].fromDbValue(string)
     let dbrestype = row[2].fromDbValue(int).ResType
@@ -227,7 +236,7 @@ proc originateFromClient(originPath, nwsyncDir, outDir: string) =
     if checkRewrite(hakFolder, resRef, resSha1):
       continue
     let shard = openDatabase(nwsyncDir / "nwsyncdata_" & $sha1Shard[resSha1] & ".sqlite3")
-    let blob = fromDbValue(shard.rows("SELECT data FROM resrefs WHERE sha1 = ?", resSha1)[0][0], seq[byte]).toString()
+    let blob = fromDbValue(shard.value("SELECT data FROM resrefs WHERE sha1 = ?", resSha1).get, string)
     let resStream = openFileStream(hakFolder / resRef, fmWrite) #check path here includes hakFolder
 
     zeroSized += resStream.writeDecompressed(blob)

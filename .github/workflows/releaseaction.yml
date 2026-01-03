@@ -14,30 +14,23 @@ jobs:
       - name: Checkout git
         uses: actions/checkout@master
       - name: Install Nim
-        uses: jiro4989/setup-nim-action@v1.1.4
+        uses: jiro4989/setup-nim-action@v2.2.2
       - name: Get DLLs
         run: |
           curl --output dlls.zip https://nim-lang.org/download/dlls.zip
           tar -xf dlls.zip
-      - name: Upload sqlite3 DLL
-        uses: actions/upload-artifact@v2
-        with:
-          name: winbin
-          path: sqlite3_64.dll
-      - name: Upload pcre DLL
-        uses: actions/upload-artifact@v2
-        with:
-          name: winbin
-          path: pcre64.dll
       - name: build win binary
         run: |
           nimble refresh
           nimble build -d:release
-      - name: Store win binary
-        uses: actions/upload-artifact@v2
+      - name: Upload Windows files
+        uses: actions/upload-artifact@v6
         with:
           name: winbin
-          path: nwsync_originate.exe
+          path: |
+            sqlite3_64.dll
+            pcre64.dll
+            nwsync_originate.exe
   Linux:
     name: Linux Binary and Release
     needs: Windows
@@ -46,46 +39,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@master
       - name: setup Nim # This would actually build your project, using zip for an example artifact
-        uses: jiro4989/setup-nim-action@v1.1.4
+        uses: jiro4989/setup-nim-action@v2.2.2
       - name: Compile Project
         run: |
           nimble refresh
           nimble build -d:release
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: true
-          prerelease: false
       - name: Zip Linux Asset
         run: zip nwsync_originate-linux.zip nwsync_originate
-      - name: Upload Linux Asset
-        id: upload-linux-asset
-        uses: actions/upload-release-asset@v1.0.2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./nwsync_originate-linux.zip
-          asset_name: nwsync_originate-linux.zip
-          asset_content_type: application/zip
       - name: Retrieve Window Binary
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v7
         with:
           name: winbin
       - name: Zip Windows Asset
         run: zip nwsync_originate-windows.zip nwsync_originate.exe sqlite3_64.dll pcre64.dll
-      - name: Upload Windows Asset
-        id: upload-windows-asset
-        uses: actions/upload-release-asset@v1.0.2
+      - name: Create Release
+        id: create_release
+        uses: ncipollo/release-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
-          asset_path: ./nwsync_originate-windows.zip
-          asset_name: nwsync_originate-windows.zip
-          asset_content_type: application/zip
+          tag: ${{ github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Release ${{ github.ref }}
+          draft: true
+          prerelease: false
+          artifacts: ./nwsync_originate-linux.zip, ./nwsync_originate-windows.zip
+          artifactContentType: application/zip

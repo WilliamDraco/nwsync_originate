@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.3.2"
+version       = "0.4.0"
 author        = "WilliamDraco"
 description   = "Takes a nwsync .origin file and re-originates the haks/tlks which went into it."
 license       = "MIT"
@@ -10,7 +10,7 @@ bin           = @["nwsync_originate"]
 
 # Dependencies
 
-requires "nim >= 1.4.2"
-requires "neverwinter >= 1.4.1"
-requires "tiny_sqlite >= 0.1.2"
-requires "docopt >= 0.6.8"
+requires "nim >= 2.2.0"
+requires "neverwinter >= 2.0.1"
+requires "tiny_sqlite >= 0.2.0"
+requires "docopt >= 0.7.1"
